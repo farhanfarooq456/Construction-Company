@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>AiroxLab Mailer</title>
+<style>
+  body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:0 16px}
+  input,textarea{width:100%;padding:10px;margin:6px 0 14px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
+  textarea{font-family:monospace}
+  button{background:#111;color:#fff;border:0;padding:12px 24px;border-radius:6px;cursor:pointer}
+  button:disabled{opacity:.5}
+  .hidden{display:none}
+  #status{margin-top:16px;white-space:pre-wrap}
+  .top{display:flex;justify-content:space-between;align-items:center}
+</style>
+</head>
+<body>
+
+<div id="loginBox">
+  <h2>Login</h2>
+  <input id="email" type="email" placeholder="Email">
+  <input id="key" placeholder="Licence key">
+  <button onclick="login()">Login</button>
+  <p id="loginMsg"></p>
+</div>
+
+<div id="sendBox" class="hidden">
+  <div class="top">
+    <h2>Send Email</h2>
+    <span><small id="expiry"></small> &nbsp; <button onclick="logout()">Logout</button></span>
+  </div>
+  <label>Recipients (one per line or comma separated)</label>
+  <textarea id="recipients" rows="6"></textarea>
+  <label>Subject</label>
+  <input id="subject">
+  <label>HTML Template</label>
+  <textarea id="html" rows="14"></textarea>
+  <button id="sendBtn" onclick="send()">Send</button>
+  <div id="status"></div>
+</div>
+
+<script>
+const auth = () => JSON.parse(localStorage.getItem("auth") || "null");
+
+async function login() {
+  const email = document.getElementById("email").value.trim();
+  const key = document.getElementById("key").value.trim();
+  const r = await fetch("/api/login", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ email, key })
+  });
+  const d = await r.json();
+  if (!r.ok) return document.getElementById("loginMsg").textContent = d.error;
+  localStorage.setItem("auth", JSON.stringify({ email, key, expiry: d.expiry }));
+  show();
+}
+
+function logout() { localStorage.removeItem("auth"); show(); }
+
+function show() {
+  const a = auth();
+  document.getElementById("loginBox").classList.toggle("hidden", !!a);
+  document.getElementById("sendBox").classList.toggle("hidden", !a);
+  if (a) document.getElementById("expiry").textContent = "Licence valid till " + a.expiry;
+}
+
+async function send() {
+  const a = auth();
+  const btn = document.getElementById("sendBtn");
+  const status = document.getElementById("status");
+  btn.disabled = true; status.textContent = "Sending...";
+  const r = await fetch("/api/send", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
+      email: a.email, key: a.key,
+      recipients: document.getElementById("recipients").value,
+      subject: document.getElementById("subject").value,
+      html: document.getElementById("html").value
+    })
+  });
+  const d = await r.json();
+  btn.disabled = false;
+  if (!r.ok) { status.textContent = d.error; if (r.status === 401) logout(); return; }
+  status.textContent = d.results.map(x => `${x.to} — ${x.status}${x.error ? ": " + x.error : ""}`).join("\n");
+}
+
+show();
+</script>
+</body>
+</html>
